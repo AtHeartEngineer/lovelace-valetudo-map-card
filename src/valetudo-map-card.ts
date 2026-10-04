@@ -4,6 +4,7 @@ import { HassEntity } from "home-assistant-js-websocket";
 
 import packageJson from "../package.json";
 import { FourColorTheoremSolver } from "./lib/colors/FourColorTheoremSolver";
+import { CLEANING_FIELDS, cleaningRows, createModeControl } from "./lib/cleaningPanel";
 import { preprocessMap } from "./lib/mapUtils";
 import { extractZtxtPngChunks } from "./lib/pngUtils";
 import { RawMapData, RawMapEntity, RawMapEntityType, RawMapLayer, RawMapLayerType } from "./lib/RawMapData";
@@ -19,7 +20,9 @@ console.info(
 class ValetudoMapCard extends HTMLElement {
     _hass: HomeAssistant;
     _config: Configuration;
-    
+    cleaningContainer: HTMLDivElement;
+    lastCleaningSignature = "";
+
     drawingMap: boolean;
     drawingControls: boolean;
     lastUpdatedControls: string;
@@ -89,6 +92,67 @@ class ValetudoMapCard extends HTMLElement {
         this.controlContainerStyle = document.createElement("style");
         this.cardContainer.appendChild(this.controlContainer);
         this.cardContainer.appendChild(this.controlContainerStyle);
+        this.cleaningContainer = document.createElement("div");
+        this.cardContainer.appendChild(this.cleaningContainer);
+        const cleaningStyle = document.createElement("style");
+        cleaningStyle.textContent = `
+            .cleaning-summary, .cleaning-mode { padding: 12px 16px; }
+            .cleaning-summary h3 { margin: 0 0 8px; font-size: 1rem; }
+            .cleaning-summary dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+            .cleaning-summary dt, .cleaning-summary dd { min-width: 0; overflow-wrap: anywhere; }
+            .cleaning-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
+            .cleaning-mode label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+            .cleaning-mode select { min-height: 44px; max-width: 100%; color: var(--primary-text-color);
+                background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 4px; padding: 8px; }
+            .cleaning-mode select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+            .cleaning-mode [role=status] { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+        `;
+        this.cardContainer.appendChild(cleaningStyle);
+    }
+
+    updateCleaningPanel() {
+        const summary = this._config.last_clean_entity ? this._hass.states[this._config.last_clean_entity] : undefined;
+        const mode = this._config.cleaning_mode_entity ? this._hass.states[this._config.cleaning_mode_entity] : undefined;
+        const signature = JSON.stringify([this._config.show_last_clean, this._config.show_cleaning_mode,
+            this._config.last_clean_fields, summary, mode, this._hass.locale?.language]);
+        if (signature === this.lastCleaningSignature) {
+            return;
+        }
+        this.lastCleaningSignature = signature;
+        this.clearContainer(this.cleaningContainer);
+        if (this._config.show_last_clean) {
+            const section = document.createElement("section");
+            section.className = "cleaning-summary";
+            const heading = document.createElement("h3");
+            heading.textContent = "Last clean";
+            section.appendChild(heading);
+            if (!summary || ["unavailable", "unknown"].includes(summary.state)) {
+                const message = document.createElement("p");
+                message.textContent = "Cleaning history unavailable. Check last_clean_entity.";
+                section.appendChild(message);
+            } else if (!summary.attributes.finished_at) {
+                const message = document.createElement("p");
+                message.textContent = "No completed clean recorded yet.";
+                section.appendChild(message);
+            } else {
+                const list = document.createElement("dl");
+                cleaningRows(summary.attributes, this._config.last_clean_fields, this._hass.locale?.language).forEach(([label, value]) => {
+                    const term = document.createElement("dt");
+                    term.textContent = label;
+                    const detail = document.createElement("dd");
+                    detail.textContent = value;
+                    list.append(term, detail);
+                });
+                section.appendChild(list);
+            }
+            this.cleaningContainer.appendChild(section);
+        }
+        if (this._config.show_cleaning_mode) {
+            this.cleaningContainer.appendChild(createModeControl(document, mode, this._config.cleaning_mode_entity || "cleaning_mode_entity",
+                (domain, service, data) => {
+                    return this._hass.callService(domain, service, data);
+                }));
+        }
     }
 
     static getStubConfig() {
@@ -134,7 +198,7 @@ class ValetudoMapCard extends HTMLElement {
             return color;
         }
 
-        return '';
+        return "";
     }
 
     isOutsideBounds(x: number, y: number, drawnMapCanvas: HTMLCanvasElement, config: Configuration) {
@@ -775,6 +839,16 @@ class ValetudoMapCard extends HTMLElement {
         }
 
 
+        if (!Array.isArray(this._config.last_clean_fields) || this._config.last_clean_fields.some(field => {
+            return !CLEANING_FIELDS.includes(field);
+        })) {
+            throw new Error("last_clean_fields must contain supported cleaning summary fields");
+        }
+        if (this._config.cleaning_mode_entity && !this._config.cleaning_mode_entity.startsWith("select.")) {
+            throw new Error("cleaning_mode_entity must be a select entity");
+        }
+        this.lastCleaningSignature = "";
+
         /* More default stuff */
 
         // Rotation settings
@@ -825,6 +899,7 @@ class ValetudoMapCard extends HTMLElement {
         }
 
         this._hass = hass;
+        this.updateCleaningPanel();
 
         let mapEntity = this.getMapEntity(this._config.vacuum);
         let vacuumEntity = this.getVacuumEntity(this._config.vacuum);
@@ -1001,7 +1076,7 @@ class ValetudoMapCard extends HTMLElement {
             let minHeight = Number(this._config.min_height);
 
             // Want height based on container width
-            if (typeof this._config.min_height === 'string' && this._config.min_height.endsWith("w")) {
+            if (typeof this._config.min_height === "string" && this._config.min_height.endsWith("w")) {
                 minHeight = Number(this._config.min_height.slice(0, -1)) * this.mapContainer.offsetWidth;
             }
 

@@ -1,0 +1,13 @@
+type: custom:valetudo-map-card
+vacuum: my_robot
+show_cleaning_mode: true
+cleaning_mode_entity: select.my_robot_mode
+show_last_clean: true
+last_clean_entity: sensor.my_robot_last_clean
+last_clean_fields:
+  - finished_at
+  - mode
+  - started_at
+  - duration
+  - battery_start
+  - battery_end

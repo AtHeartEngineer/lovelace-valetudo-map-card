@@ -1,3 +1,4 @@
+import { CLEANING_FIELDS } from "../lib/cleaningPanel";
 import { Configuration } from "../lib/types";
 
 export const DEFAULT_CARD_CONFIG = Object.freeze({
@@ -27,6 +28,9 @@ export const DEFAULT_CARD_CONFIG = Object.freeze({
     // Info show settings
     show_status: true,
     show_battery_level: true,
+    show_last_clean: false,
+    last_clean_fields: CLEANING_FIELDS,
+    show_cleaning_mode: false,
 
     // Show button settings
     show_start_button: true,

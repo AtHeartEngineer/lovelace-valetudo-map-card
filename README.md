@@ -141,3 +141,71 @@ Custom buttons can be added to this card when vacuum_entity is set. Each custom 
 ## License
 
 Lovelace Valetudo Map Card is licensed under the MIT license.
+
+## Cleaning summary and mode selection (fork)
+
+Both additions are off by default. Enable either independently:
+
+```yaml
+type: custom:valetudo-map-card
+vacuum: my_robot
+show_cleaning_mode: true
+cleaning_mode_entity: select.my_robot_mode
+show_last_clean: true
+last_clean_entity: sensor.my_robot_last_clean
+```
+
+`cleaning_mode_entity` must be an existing Home Assistant `select` entity.
+The control lists the options supplied by that entity. Known modes display
+as Vacuum only, Mop only, Vacuum and mop, and Vacuum then mop. Changing the
+selection calls `select.select_option`; it does not start a clean. The next
+Start action uses the robot's selected mode. Automations may override it.
+Missing or unavailable entities disable the control and show a message.
+
+`last_clean_entity` must contain a saved cleaning summary in these attributes:
+
+| Attribute | Value |
+| --- | --- |
+| `finished_at` | Finish timestamp with timezone, such as `2026-10-03T14:49:00Z` |
+| `started_at` | Start timestamp with timezone |
+| `mode` | Mode used for that run, such as `vacuum_then_mop` |
+| `duration` | Cleaning duration in seconds |
+| `battery_start` | Battery percentage at the start, from 0 to 100 |
+| `battery_end` | Battery percentage at the finish, from 0 to 100 |
+
+The mode shown in the summary comes from the saved run, independently of the
+mode currently selected for the next clean. Duration displays in minutes.
+Timestamps use the Home Assistant language and browser timezone. Missing or
+invalid values display as Unknown; absent finish timestamps display
+“No completed clean recorded yet.”
+
+All fields appear by default. Set `last_clean_fields` to a list of the
+attribute names above to choose fields and their order:
+
+```yaml
+last_clean_fields: [finished_at, mode, duration]
+```
+
+The card reads a Home Assistant entity; it does not record cleaning history
+in the browser. Create that entity with an integration or server-side
+recording before enabling the summary. A
+[trigger-based template sensor](https://www.home-assistant.io/integrations/template/#trigger-based-template-entities)
+can preserve a recorded state and its attributes across Home Assistant
+restarts. Existing runs cannot be recovered from current totals alone.
+Record completed runs from a reliable completion signal, and preserve their
+start snapshots across pauses, mop washing, and recharge visits to the dock.
+
+The new panels update on entity changes even when map polling is idle or the
+map camera is unavailable. See `examples/card.yaml` for the full configuration.
+
+### Build and checks
+
+```sh
+npm ci
+npm test
+npm run lint
+```
+
+The build writes `dist/valetudo-map-card.js`. DOM tests exercise the bundled
+card, mode service calls, unavailable states, and summary formatting. They
+send no commands to a physical robot.

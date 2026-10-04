@@ -1,3 +1,5 @@
+import { CleaningField } from "./cleaningPanel";
+
 export type HaIconElement = HTMLElement & { icon?: string };
 
 export type RobotInfo = [x: number, y: number, angle?: number];
@@ -52,6 +54,11 @@ export interface Configuration {
     // Info show settings
     show_status: boolean;
     show_battery_level: boolean;
+    show_last_clean: boolean;
+    last_clean_entity?: string;
+    last_clean_fields: CleaningField[];
+    show_cleaning_mode: boolean;
+    cleaning_mode_entity?: string;
 
     // Show button settings
     show_start_button: boolean;
