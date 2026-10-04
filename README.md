@@ -195,6 +195,28 @@ restarts. Existing runs cannot be recovered from current totals alone.
 Record completed runs from a reliable completion signal, and preserve their
 start snapshots across pauses, mop washing, and recharge visits to the dock.
 
+For Dreame robots exposing Valetudo's cleaning counter and `resumable` status
+flag, [examples/last-clean-recorder.yaml](examples/last-clean-recorder.yaml)
+provides a recorder. Merge its block into your existing `template:` list,
+replace the six robot entity IDs in both the variables and state triggers, validate
+the configuration, and reload template entities. It creates
+`sensor.vacuum_last_clean`; use that entity in the card configuration.
+
+The recorder captures the mode, timestamp, and battery when cleaning begins.
+It keeps that start snapshot through pauses and resumable dock visits. Once
+the robot is idle or docked with no resumable task, it saves the end timestamp
+and battery, waits at least 15 seconds, and publishes the summary if the
+cleaning counter increased. A terminal run without a counter increase is
+cleared after 90 seconds, preserving the previous completed summary.
+These boundaries depend on those Valetudo signals; verify them on your robot.
+
+Duration comes from the robot's current statistics, in seconds; Dreame's
+reported duration has minute precision. Battery and transition timestamps
+reflect the latest Home Assistant updates. Both the completed summary and
+pending run use restored template sensor attributes. Only future observed
+cleans are recorded. Until the first completes, the sensor is `waiting` and
+the card shows “No completed clean recorded yet.”
+
 The new panels update on entity changes even when map polling is idle or the
 map camera is unavailable. See `examples/card.yaml` for the full configuration.
 
@@ -208,4 +230,10 @@ npm run lint
 
 The build writes `dist/valetudo-map-card.js`. DOM tests exercise the bundled
 card, mode service calls, unavailable states, and summary formatting. They
-send no commands to a physical robot.
+send no commands to a physical robot. Recorder boundary tests use the actual
+YAML expression with simulated entity updates:
+
+```sh
+python -m pip install PyYAML Jinja2
+python -m unittest discover -s tests -p test_recorder.py -v
+```

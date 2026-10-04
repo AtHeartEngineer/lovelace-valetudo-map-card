@@ -1,0 +1,67 @@
+template:
+  - variables:
+      summary_entity: sensor.vacuum_last_clean
+      vacuum_entity: vacuum.my_robot
+      mode_entity: select.my_robot_mode
+      battery_entity: sensor.my_robot_battery_level
+      duration_entity: sensor.my_robot_current_statistics_time
+      count_entity: sensor.my_robot_total_statistics_count
+      flag_entity: sensor.my_robot_status_flag
+    triggers:
+      - trigger: state
+        entity_id:
+          - vacuum.my_robot
+          - select.my_robot_mode
+          - sensor.my_robot_battery_level
+          - sensor.my_robot_current_statistics_time
+          - sensor.my_robot_total_statistics_count
+          - sensor.my_robot_status_flag
+      - trigger: time_pattern
+        seconds: /15
+    actions:
+      - variables:
+          record: >-
+            {%- set old = states[summary_entity].attributes | default({}, true) -%}
+            {%- set pending = old.get('pending') or {} -%}
+            {%- set vacuum = states(vacuum_entity) -%}
+            {%- set count = states(count_entity) | int(-1) -%}
+            {%- set terminal = vacuum in ['docked', 'idle'] and states(flag_entity) == 'none' -%}
+            {%- set result = dict(started_at=old.get('started_at'), finished_at=old.get('finished_at'),
+              mode=old.get('mode'), duration=old.get('duration'), battery_start=old.get('battery_start'),
+              battery_end=old.get('battery_end')) -%}
+            {%- if not pending and vacuum == 'cleaning' and count >= 0 -%}
+              {%- set pending = dict(started_at=now().isoformat(), mode=states(mode_entity),
+                battery_start=states(battery_entity) | float(none), count_start=count, end={}) -%}
+            {%- elif pending -%}
+              {%- if terminal -%}
+                {%- if not pending.get('end') -%}
+                  {%- set pending = dict(pending, end=dict(finished_at=now().isoformat(),
+                    battery_end=states(battery_entity) | float(none))) -%}
+                {%- endif -%}
+                {%- set settled = as_timestamp(now()) - as_timestamp(pending.end.finished_at) -%}
+                {%- if count > pending.count_start and settled >= 15 -%}
+                  {%- set result = dict(started_at=pending.started_at, finished_at=pending.end.finished_at,
+                    mode=pending.mode, duration=states(duration_entity) | float(none),
+                    battery_start=pending.battery_start, battery_end=pending.end.battery_end) -%}
+                  {%- set pending = {} -%}
+                {%- elif count >= 0 and count <= pending.count_start and settled >= 90 -%}
+                  {%- set pending = {} -%}
+                {%- endif -%}
+              {%- else -%}
+                {%- set pending = dict(pending, end={}) -%}
+              {%- endif -%}
+            {%- endif -%}
+            {{ dict(result, pending=pending) }}
+    sensor:
+      - name: Vacuum Last Clean
+        unique_id: valetudo_last_clean_record
+        default_entity_id: sensor.vacuum_last_clean
+        state: "{{ 'ready' if record.finished_at else 'waiting' }}"
+        attributes:
+          pending: "{{ record.pending }}"
+          started_at: "{{ record.started_at }}"
+          finished_at: "{{ record.finished_at }}"
+          mode: "{{ record.mode }}"
+          duration: "{{ record.duration }}"
+          battery_start: "{{ record.battery_start }}"
+          battery_end: "{{ record.battery_end }}"
